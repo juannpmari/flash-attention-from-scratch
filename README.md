@@ -18,17 +18,20 @@ This repo presents a Flash Attention implementation using Triton, a cuda compile
 
 Experiments where run on a GeForce RTX 4050 (6Gb), CUDA 13.0
 
-### Forward pass latency
+### Forward pass
 
 embedding_dimension = 128
 dtype = torch.float32
+tile_size = 16
 The following plot shows latency vs sequence length:
 [Insert plot here resources/latency_loglog_scaling_embed128_dtypefloat32.png]
+
+The following plot shows memory footprint vs sequence length:
+[Insert plot here resources/memory_loglog_scaling_embed128_dtypefloat32.png]
 
 Key insigths:
 - As can be seen, the shape of the plot is very similar to that of fig 3 from the original paper.
 - Flash-attention is several times faster than the naive implementation
-
 
 
 ## Backward pass latency

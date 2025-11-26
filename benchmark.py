@@ -15,7 +15,7 @@ def _create_powers_of_2_list(A: float, B: float) -> list:
         current_num *= 2
     return result
 
-def benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list):
+def benchmark_latency_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list):
     batch_size = 1
     for dtype in dtype_list:
         for embed_dim in embed_dim_list:
@@ -39,10 +39,41 @@ def benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_le
                 output_filename=f"latency_loglog_scaling_embed{embed_dim}_dtype{str(dtype).split('.')[-1]}.png",
             )
 
+# TODO: check this, and check the memory metrics
+def benchmark_memory_footprint_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list):
+    batch_size = 1
+    for dtype in dtype_list:
+        for embed_dim in embed_dim_list:
+            triton_memory = []
+            naive_memory = []
+            for seq_len in seq_len_list:
+                Q = torch.randn(batch_size, seq_len, embed_dim, dtype=dtype, device='cuda')
+                K = torch.randn(batch_size, seq_len, embed_dim, dtype=dtype, device='cuda')
+                V = torch.randn(batch_size, seq_len, embed_dim, dtype=dtype, device='cuda')
+
+                # --- Triton Memory Benchmark ---
+                torch.cuda.reset_peak_memory_stats()
+                FlashAttnTriton.apply(Q, K, V, True)
+                torch.cuda.synchronize()
+                triton_peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
+                triton_memory.append(triton_peak_mb)
+
+                # --- Naive Memory Benchmark ---
+                torch.cuda.reset_peak_memory_stats()
+                naive_attention(Q, K, V)
+                torch.cuda.synchronize()
+                naive_peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
+                naive_memory.append(naive_peak_mb)
+            plot_loglog_scaling(triton_memory, naive_memory, seq_len_list,
+                                output_filename=f"memory_loglog_scaling_embed{embed_dim}_dtype{str(dtype).split('.')[-1]}.png",
+                                y_label="Memory Footprint (MB)")
+           
+
 if __name__ == "__main__":
     batch_size = 1
     seq_len_list = _create_powers_of_2_list(128,65536/4)
     embed_dim_list = [128]#_create_powers_of_2_list(16,128)
     dtype_list = [torch.float32]
 
-    benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list)
+    # benchmark_latency_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list)
+    benchmark_memory_footprint_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list)
