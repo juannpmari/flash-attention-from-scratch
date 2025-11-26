@@ -1,8 +1,8 @@
 import triton
 import torch
-from naive_attention import naive_attention
+from benchmarking.naive_attention import naive_attention
+from benchmarking.plots import plot_loglog_scaling
 from flash_attn_triton import FlashAttnTriton
-from plots import plot_latencies, plot_loglog_scaling
 
 def _create_powers_of_2_list(A: float, B: float) -> list:
     """Creates a list [A, A*2, A*4, ...] up to B."""
@@ -32,13 +32,6 @@ def benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_le
                 fn = lambda: naive_attention(Q, K, V)
                 naive_latency.append(triton.testing.do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, return_mode='median'))
             
-            plot_latencies(
-                naive_latency,
-                triton_latency,
-                [str(i) for i in range(len(naive_latency))],
-                output_filename=f"latency_comparison_embed{embed_dim}_dtype{str(dtype).split('.')[-1]}.png",
-            )
-
             plot_loglog_scaling(
                 naive_latency,
                 triton_latency,
@@ -48,6 +41,8 @@ def benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_le
 
 if __name__ == "__main__":
     batch_size = 1
-    seq_len_list = _create_powers_of_2_list(128,65536/2)
+    seq_len_list = _create_powers_of_2_list(128,65536/4)
     embed_dim_list = [128]#_create_powers_of_2_list(16,128)
     dtype_list = [torch.float32]
+
+    benchmark_flash_attention_triton_vs_naive(dtype_list, embed_dim_list, seq_len_list)
