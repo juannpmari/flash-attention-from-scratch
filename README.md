@@ -6,7 +6,7 @@ Attention is a memory-bound operation. When computed naively, it requires O(N2) 
 Flash Attention is a highly optimized attention implementation that leverages GPU memory hierarchy and 3 well stablished GPU programming techniques:
 - kernel fusion
 - tiling
-- (dont remember)
+- recomputation
 This is done by moving tensors ...
 
 This effectively reduces data transfer from O(N2) to O()
