@@ -119,22 +119,21 @@ def flash_fwd_kernel(
 
     Li = mi + tl.log(li)
     Oi_final = Oi_new / li
-
-    # tl.device_print(li.type.element_ty)
-    # tl.device_print(mi.type.element_ty)
-    # tl.device_print(Oi_new.type.element_ty)
-
     tl.store(O_block_ptr, Oi_final)
     tl.store(L_block_ptr, tl.reshape(Li, (Q_TILE_SIZE,)))
 
+
 def compute_backward(Q, K, V, O, L, dO, is_causal):
-    D = torch.sum(O * dO, dim=-1, keepdim=True) 
+    D = torch.sum(O * dO, dim=-1, keepdim=True)
     S = Q @ torch.transpose(K, -2, -1) / (Q.size(-1) ** 0.5)  # TODO: is this optimal?
 
     if is_causal:
         n_queries = Q.shape[-2]
         n_keys = K.shape[-2]
-        mask = torch.arange(n_queries, device=S.device)[None, :, None] < torch.arange(n_keys, device=S.device)[None, None, :]
+        mask = (
+            torch.arange(n_queries, device=S.device)[None, :, None]
+            < torch.arange(n_keys, device=S.device)[None, None, :]
+        )
         S = torch.where(mask, -torch.inf, S)
     P = torch.exp(S - L.unsqueeze(-1))  # b x nq x nk
     dV = torch.transpose(P, -2, -1) @ dO  # b x nk x d
@@ -144,7 +143,9 @@ def compute_backward(Q, K, V, O, L, dO, is_causal):
     dK = torch.transpose(dS, -2, -1) @ Q / (Q.size(-1) ** 0.5)
     return dQ, dK, dV
 
+
 compiled_backward = torch.compile(compute_backward)
+
 
 class FlashAttnTriton(torch.autograd.Function):
     @staticmethod
@@ -198,13 +199,13 @@ class FlashAttnTriton(torch.autograd.Function):
         ctx.save_for_backward(Q, K, V, O, L.squeeze(-1))
         ctx.is_causal = is_causal
         return O, L
-        
-    #TODO: see where to add torch.compile
+
+    # TODO: see where to add torch.compile
     @staticmethod
     def backward(ctx, dO, dL):
         Q, K, V, O, L = ctx.saved_tensors
         is_causal = ctx.is_causal
-        
+
         dQ, dK, dV = compiled_backward(Q, K, V, O, L, dO, is_causal)
 
         return dQ, dK, dV, None
