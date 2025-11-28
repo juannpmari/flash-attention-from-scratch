@@ -51,6 +51,9 @@ def benchmark_latency_triton_vs_naive(
                     requires_grad=True,
                 )
 
+                fraction = 1.0  # Be careful with 1.0; 0.95 is safer to leave room for context overhead
+                torch.cuda.set_per_process_memory_fraction(fraction, 0)
+
                 if eval == "forward":
                     fn = lambda: FlashAttnTriton.apply(Q, K, V, True)
                     triton_latency.append(
@@ -140,19 +143,34 @@ def benchmark_memory_footprint_triton_vs_naive(
                     batch_size, seq_len, embed_dim, dtype=dtype, device="cuda"
                 )
 
+                fraction = 1.0  # Be careful with 1.0; 0.95 is safer to leave room for context overhead
+                torch.cuda.set_per_process_memory_fraction(fraction, 0)
                 # --- Triton Memory Benchmark ---
+                torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats()
-                FlashAttnTriton.apply(Q, K, V, True)
-                torch.cuda.synchronize()
-                triton_peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
-                triton_memory.append(triton_peak_mb)
+                torch.cuda.reset_accumulated_memory_stats()
+                try:             
+                    FlashAttnTriton.apply(Q, K, V, True)
+                    torch.cuda.synchronize()
+                    triton_peak_mb = torch.cuda.max_memory_reserved() / (1024**2)
+                    triton_memory.append(triton_peak_mb)
+                except torch.cuda.OutOfMemoryError:
+                    print(f"Triton OOM for seq_len={seq_len}, embed_dim={embed_dim}, dtype={dtype}")
+                    # triton_peak_mb = 0
 
                 # --- Naive Memory Benchmark ---
+                torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats()
-                naive_attention(Q, K, V, True)
-                torch.cuda.synchronize()
-                naive_peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
-                naive_memory.append(naive_peak_mb)
+                torch.cuda.reset_accumulated_memory_stats()
+                try:
+                    naive_attention(Q, K, V, True)
+                    torch.cuda.synchronize()
+                    # naive_peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
+                    naive_peak_mb = torch.cuda.max_memory_reserved() / (1024**2)
+                    naive_memory.append(naive_peak_mb)
+                except torch.cuda.OutOfMemoryError:
+                    print(f"Naive OOM for seq_len={seq_len}, embed_dim={embed_dim}, dtype={dtype}")
+                    # naive_peak_mb = 0
             plot_loglog_scaling(
                 triton_memory,
                 naive_memory,
